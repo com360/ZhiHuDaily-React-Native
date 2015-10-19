@@ -10,16 +10,18 @@ var {
   Image,
   ToolbarAndroid,
   TouchableHighlight,
+  Animated,
+  Platform,
+  WebView,
 } = React;
 
-var precomputeStyle = require('precomputeStyle');
-
-var MyWebView = require('./WebView');
+var MyWebView = (Platform.OS === 'ios') ? WebView : require('./WebView');
 var DetailToolbar = require('./DetailToolbar');
 
 var BASE_URL = 'http://news.at.zhihu.com/api/4/news/';
 var REF_HEADER = 'header';
 var PIXELRATIO = PixelRatio.get();
+var HEADER_SIZE = 200;
 
 var StoryScreen = React.createClass({
   getInitialState: function() {
@@ -27,6 +29,7 @@ var StoryScreen = React.createClass({
       isLoading: false,
       detail: null,
       scrollY: 0,
+      scrollValue: new Animated.Value(0)
     });
   },
   componentDidMount: function() {
@@ -57,10 +60,10 @@ var StoryScreen = React.createClass({
   onWebViewScroll: function(event) {
     //console.log('ScrollY: ' + event);
     var scrollY = -event / PIXELRATIO;
-    var nativeProps = precomputeStyle({transform: [{translateY: scrollY}]});
-    this.refs[REF_HEADER].setNativeProps(nativeProps);
+    this.state.scrollValue.setValue(scrollY);
   },
   render: function() {
+
     var toolbar = <DetailToolbar navigator={this.props.navigator} style={styles.toolbar}
       story={this.props.story}/>;
     if (this.state.isLoading) {
@@ -74,29 +77,31 @@ var StoryScreen = React.createClass({
       );
     } else {
       if (this.state.detail) {
-        // var headerStyle = {
-        //   height: 200,
-        //   flexDirection: 'row',
-        //   transform: [{translateY: this.state.scrollY}],
-        // };
-        var toolbar
+        var translateY = this.state.scrollValue.interpolate({
+          inputRange: [0, HEADER_SIZE, HEADER_SIZE + 1], outputRange: [0, HEADER_SIZE, HEADER_SIZE]
+        });
+        var html = '<!DOCTYPE html><html><head><link rel="stylesheet" type="text/css" href="'
+          + this.state.detail.css[0]
+          + '" /></head><body>' + this.state.detail.body
+          + '</body></html>';
         return (
           <View style={styles.container}>
             <MyWebView
               style={styles.content}
-              html={this.state.detail.body}
-              css={this.state.detail.css[0]}
+              html={html}
               onScrollChange={this.onWebViewScroll}/>
-            <Image
-              ref={REF_HEADER}
-              source={{uri: this.state.detail.image}}
-              style={styles.headerImage} >
-              <View style={styles.titleContainer}>
-                <Text style={styles.title}>
-                  {this.props.story.title}
-                </Text>
-              </View>
-            </Image>
+            <Animated.View style={[styles.header, {transform: [{translateY}]}]}>
+              <Image
+                ref={REF_HEADER}
+                source={{uri: this.state.detail.image}}
+                style={styles.headerImage} >
+                <View style={styles.titleContainer}>
+                  <Text style={styles.title}>
+                    {this.props.story.title}
+                  </Text>
+                </View>
+              </Image>
+            </Animated.View>
             {toolbar}
           </View>
         );
@@ -125,15 +130,18 @@ var styles = StyleSheet.create({
     bottom: 0,
     top: 0,
   },
-  headerImage: {
-    height: 200,
-    flexDirection: 'row',
-    backgroundColor: '#DDDDDD',
+  header: {
+    height: HEADER_SIZE,
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
     top: 56,
+  },
+  headerImage: {
+    height: HEADER_SIZE,
+    flexDirection: 'row',
+    backgroundColor: '#DDDDDD',
   },
   titleContainer: {
     flex: 1,

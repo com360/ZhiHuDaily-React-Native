@@ -10,24 +10,16 @@ var {
   StyleSheet,
   Text,
   View,
-  DrawerLayoutAndroid,
-  ToolbarAndroid,
-  ToastAndroid,
-  BackAndroid,
+  TouchableOpacity,
 } = React
 
-var TimerMixin = require('react-timer-mixin');
 var StoryItem = require('./StoryItem');
 var ThemesList = require('./ThemesList');
 var DataRepository = require('./DataRepository');
+var ViewPager = require('react-native-viewpager');
+var StoryScreen = require('./StoryScreen');
 
-var API_LATEST_URL = 'http://news.at.zhihu.com/api/4/news/latest';
-var API_HISTORY_URL = 'http://news.at.zhihu.com/api/4/news/before/';
-var API_THEME_URL = 'http://news-at.zhihu.com/api/4/theme/';
 var LOADING = {};
-// var lastDate = null;
-// var latestDate = null;
-// var dataBlob = {};
 var WEEKDAY = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
 var DRAWER_WIDTH_LEFT = 56;
 var toolbarActions = [
@@ -36,13 +28,11 @@ var toolbarActions = [
   {title: '设置选项', show: 'never'},
 ];
 
-var HOME_LIST_KEY = 'home_list_key_';
-var THEME_LIST_KEY = 'theme_list_key_';
-
 var repository = new DataRepository();
 
 var dataCache = {
   dataForTheme: {},
+  topDataForTheme: {},
   sectionsForTheme: {},
   lastID: {},
 };
@@ -59,36 +49,33 @@ Date.prototype.yyyymmdd = function() {
   return yyyy + (mm[1]?mm:"0"+mm[0]) + (dd[1]?dd:"0"+dd[0]); // padding
 };
 
-var ListScreen = React.createClass({
-  mixins: [TimerMixin],
+var StoriesList = React.createClass({
+
   getInitialState: function() {
     var dataSource = new ListView.DataSource({
       rowHasChanged: (row1, row2) => row1 !== row2,
       sectionHeaderHasChanged: (s1, s2) => s1 !== s2,
     });
 
+    var headerDataSource = new ViewPager.DataSource({
+      pageHasChanged: (p1, p2) => p1 !== p2,
+    });
+
     return {
       isLoading: false,
       isLoadingTail: false,
-      theme: null,
       dataSource: dataSource,
+      headerDataSource: headerDataSource,
     };
   },
-  componentWillMount: function() {
-    BackAndroid.addEventListener('hardwareBackPress', this._handleBackButtonPress);
-  },
   componentWillUnmount: function() {
-    repository.saveStories(dataCache.dataForTheme);
-  },
-  _handleBackButtonPress: function() {
-    if (this.state.theme) {
-      this.onSelectTheme(null);
-      return true;
-    }
-    return false;
+    repository.saveStories(dataCache.dataForTheme, dataCache.topDataForTheme);
   },
   componentDidMount: function() {
-    this.fetchStories(this.state.theme, true);
+    this.fetchStories(this.props.theme, true);
+  },
+  componentWillReceiveProps(nextProps) {
+    this.fetchStories(nextProps.theme, true);
   },
   fetchStories: function(theme, isRefresh) {
     var themeId = theme ? theme.id : 0;
@@ -100,11 +87,11 @@ var ListScreen = React.createClass({
       dataBlob = isInTheme ? [] : {};
     }
     var sectionIDs = dataCache.sectionsForTheme[themeId];
+    var topData = dataCache.topDataForTheme[themeId];
 
     this.setState({
       isLoading: isRefresh,
       isLoadingTail: !isRefresh,
-      theme: this.state.theme,
       dataSource: this.state.dataSource,
     });
 
@@ -112,6 +99,7 @@ var ListScreen = React.createClass({
       .then((responseData) => {
         var newLastID;
         var dataSouce;
+        var headerDataSource = this.state.headerDataSource;
         if (!isInTheme) {
           newLastID = responseData.date;
           var newDataBlob = {};
@@ -130,7 +118,13 @@ var ListScreen = React.createClass({
 
           dataBlob = newDataBlob;
           sectionIDs = newSectionIDs;
+          if (responseData.topData) {
+            topData = responseData.topData;
+            headerDataSource = headerDataSource.cloneWithPages(topData.slice())
+          }
+
           dataSouce = this.state.dataSource.cloneWithRowsAndSections(newDataBlob, newSectionIDs, null);
+
         } else {
           var length = responseData.stories.length;
           if (length > 0) {
@@ -143,11 +137,17 @@ var ListScreen = React.createClass({
           } else {
             newDataBlob = dataBlob.concat(responseData.stories);
           }
+
+          if (responseData.topData) {
+            topData = responseData.topData;
+          }
+
           dataBlob = newDataBlob;
           dataSouce = this.state.dataSource.cloneWithRows(newDataBlob);
         }
         dataCache.lastID[themeId] = newLastID;
         dataCache.dataForTheme[themeId] = dataBlob;
+        dataCache.topDataForTheme[themeId] = topData;
 
         // console.log('lastID: ' + lastID);
         // console.log('newLastID: ' + newLastID);
@@ -156,20 +156,77 @@ var ListScreen = React.createClass({
         this.setState({
           isLoading: (isRefresh ? false : this.state.isLoading),
           isLoadingTail: (isRefresh ? this.state.isLoadingTail : false),
-          theme: this.state.theme,
           dataSource: dataSouce,
+          headerDataSource: headerDataSource,
         });
+
+        isRefresh && this.props.onRefreshFinish && this.props.onRefreshFinish();
       })
       .catch((error) => {
         console.error(error);
         this.setState({
           isLoading: (isRefresh ? false : this.state.isLoading),
           isLoadingTail: (isRefresh ? this.state.isLoadingTail : false),
-          theme: this.state.theme,
           dataSource: this.state.dataSource.cloneWithRows([]),
         });
+        isRefresh && this.props.onRefreshFinish && this.props.onRefreshFinish();
       })
       .done();
+  },
+  _renderPage: function(
+    story: Object,
+    pageID: number | string,) {
+    return (
+      <TouchableOpacity style={{flex: 1}} onPress={() => {this.selectStory(story)}}>
+        <Image
+          source={{uri: story.image}}
+          style={styles.headerItem} >
+          <View style={styles.headerTitleContainer}>
+            <Text style={styles.headerTitle}
+              numberOfLines={2}>
+              {story.title}
+            </Text>
+          </View>
+        </Image>
+      </TouchableOpacity>
+    )
+  },
+  _renderHeader: function() {
+    if (this.props.theme) {
+      var themeId = this.props.theme ? this.props.theme.id : 0;
+      var topData = dataCache.topDataForTheme[themeId];
+      if (!topData) {
+        return null;
+      }
+
+      var editorsAvator = [];
+      if (topData.editors) {
+        topData.editors.forEach((editor) => {
+          editorsAvator.push(<Image style={styles.editorAvatar} source={{uri: editor.avatar}} />)
+        });
+      }
+
+      return (
+        <View style={{flex: 1}}>
+          {this._renderPage({image: topData.background, title: topData.description}, 0)}
+          <View style={styles.editors}>
+            <Text style={styles.editorsLable}>主编:</Text>
+            {editorsAvator}
+          </View>
+        </View>
+      );
+    } else {
+      return (
+        <View style={{flex: 1, height: 200}}>
+          <ViewPager
+            dataSource={this.state.headerDataSource}
+            style={styles.listHeader}
+            renderPage={this._renderPage}
+            isLoop={true}
+            autoPlay={true} />
+        </View>
+      );
+    }
   },
   getSectionTitle: function(str) {
     var date = parseDateFromYYYYMMdd(str);
@@ -182,7 +239,7 @@ var ListScreen = React.createClass({
   },
   renderSectionHeader: function(sectionData: Object,
     sectionID: number | string) {
-    if (this.state.theme) {
+    if (this.props.theme) {
       return (
         <View></View>
       );
@@ -195,19 +252,20 @@ var ListScreen = React.createClass({
     }
   },
   selectStory: function(story: Object) {
-    if (Platform.OS === 'ios') {
-      this.props.navigator.push({
-        title: story.title,
-        component: StoryScreen,
-        passProps: {story},
-      });
-    } else {
+    story.read = true;
+    // if (Platform.OS === 'ios') {
+    //   this.props.navigator.push({
+    //     title: story.title,
+    //     component: StoryScreen,
+    //     passProps: {story},
+    //   });
+    // } else {
       this.props.navigator.push({
         title: story.title,
         name: 'story',
         story: story,
       });
-    }
+    // }
   },
   renderRow: function(
     story: Object,
@@ -230,9 +288,9 @@ var ListScreen = React.createClass({
     if (this.state.isLoadingTail) {
       return;
     }
-    this.fetchStories(this.state.theme, false);
+    this.fetchStories(this.props.theme, false);
   },
-  onSelectTheme: function(theme) {
+  setTheme: function(theme) {
     // ToastAndroid.show('选择' + theme.name, ToastAndroid.SHORT);
     this.drawer.closeDrawer();
     this.setState({
@@ -243,18 +301,17 @@ var ListScreen = React.createClass({
     });
     this.fetchStories(theme, true);
   },
-  _renderNavigationView: function() {
-    return (
-      <ThemesList
-        onSelectItem={this.onSelectTheme}
-      />
-    );
+  onRefresh: function() {
+    this.onSelectTheme(this.props.theme);
   },
   render: function() {
     var content = this.state.dataSource.getRowCount() === 0 ?
-      <View style={styles.centerEmpty}><Text>加载失败</Text></View> :
+      <View style={styles.centerEmpty}>
+        <Text>{this.state.isLoading ? '正在加载...' : '加载失败'}</Text>
+      </View> :
       <ListView
         ref="listview"
+        style={styles.listview}
         dataSource={this.state.dataSource}
         renderRow={this.renderRow}
         onEndReached={this.onEndReached}
@@ -263,29 +320,9 @@ var ListScreen = React.createClass({
         keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps={true}
         showsVerticalScrollIndicator={false}
+        renderHeader={this._renderHeader}
       />;
-    var title = this.state.theme ? this.state.theme.name : '首页';
-      return (
-        <DrawerLayoutAndroid
-          ref={(drawer) => { this.drawer = drawer; }}
-          drawerWidth={Dimensions.get('window').width - DRAWER_WIDTH_LEFT}
-          keyboardDismissMode="on-drag"
-          drawerPosition={DrawerLayoutAndroid.positions.Left}
-          renderNavigationView={this._renderNavigationView}>
-          <View style={styles.container}>
-            <ToolbarAndroid
-              navIcon={require('image!ic_menu_white')}
-              title={title}
-              titleColor="white"
-              style={styles.toolbar}
-              actions={toolbarActions}
-              onIconClicked={() => this.drawer.openDrawer()}
-              onActionSelected={this.onActionSelected} />
-            {content}
-          </View>
-        </DrawerLayoutAndroid>
-
-      );
+    return content;
   }
 });
 
@@ -298,6 +335,9 @@ var styles = StyleSheet.create({
   container: {
     flex: 1,
     flexDirection: 'column',
+    backgroundColor: '#FAFAFA',
+  },
+  listview: {
     backgroundColor: '#FAFAFA',
   },
   toolbar: {
@@ -316,7 +356,45 @@ var styles = StyleSheet.create({
     color: '#888888',
     margin: 10,
     marginLeft: 16,
+  },
+  headerPager: {
+    height: 200,
+  },
+  headerItem: {
+    flex: 1,
+    height: 200,
+    flexDirection: 'row',
+  },
+  headerTitleContainer: {
+    flex: 1,
+    alignSelf: 'flex-end',
+    padding: 10,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '500',
+    color: 'white',
+    marginBottom: 10,
+  },
+  editors: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+  },
+  editorsLable: {
+    fontSize: 14,
+    color: '#888888',
+  },
+  editorAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: '#AAAAAA',
+    margin: 4,
   }
 });
 
-module.exports = ListScreen;
+module.exports = StoriesList;

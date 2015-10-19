@@ -2,13 +2,13 @@
 
 # ZhiHuDaily-React-Native
 
-The is a [Zhihu Daily](http://daily.zhihu.com/) App client, implemented using [**React Native**](http://facebook.github.io/react-native/) for Android. The is a demo project to show how to develop a compelet app with React Native. (The data api is from [ZhihuDailyPurify](https://github.com/izzyleung/ZhihuDailyPurify/wiki/%E7%9F%A5%E4%B9%8E%E6%97%A5%E6%8A%A5-API-%E5%88%86%E6%9E%90))
+The is a [Zhihu Daily](http://daily.zhihu.com/) App client, implemented using [**React Native**](http://facebook.github.io/react-native/). This project can run both on Android and iOS, with more than 80% of code in common. The is a demo project to show how to develop a compelet app with React Native. (The data api is from [ZhihuDailyPurify](https://github.com/izzyleung/ZhihuDailyPurify/wiki/%E7%9F%A5%E4%B9%8E%E6%97%A5%E6%8A%A5-API-%E5%88%86%E6%9E%90))
 
 ## How does it look like?
 
 * The home page
 
-![](./art/home.jpg)
+![](./art/home1.jpg)
 
 * The drawer
 
@@ -41,16 +41,16 @@ In this project, I used most of technology in React Native:
 * Timers
 * AsyncStorage
 * Animations
+* Customize view
 * ...
 
 ## TODO
 
 1. ~~Add local storage to cache data~~ (done)
-2. Add List header banner (Like ViewPager?)
+2. ~~Add List header banner~~ (done)
 3. ~~Add splash animation~~ (done)
-4. Add swipe/pull to refresh
-5. Working on incomplete features
-6. **iOS compatible**
+4. ~~Add swipe/pull to refresh~~ (done)
+5. ~~**iOS compatible**~~(done 80% of code in common)
 
 ## License
 
